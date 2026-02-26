@@ -1,6 +1,7 @@
 {
   "name": "test-netcdf4",
   "version": "0.1.0",
+  "builtin-baseline": "5bf0c55239da398b8c6f450818c9e28d36bf9966",
   "dependencies": [
     "netcdf-cxx4"
   ]

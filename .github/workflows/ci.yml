@@ -21,13 +21,19 @@ jobs:
       matrix:
         include:
           # ---- native builds ------------------------------------------------
-          - name: macOS-Intel
-            os: macos-13
+          # NOTE: Free GitHub-hosted Intel macOS runners (macos-12, macos-13)
+          # are fully retired as of 2025.  x64-osx is tested indirectly through
+          # the Linux-x64 job (same toolchain, same vcpkg triplet semantics).
+          # To re-enable Intel macOS, rent a macos-13-large paid runner and
+          # restore: { name: macOS-Intel, os: macos-13-large, triplet: x64-osx }
+
+          - name: macOS-Intel (macos-15)
+            os: macos-15-intel
             triplet: x64-osx
             run_tests: true
 
-          - name: macOS-ARM
-            os: macos-14          # Apple Silicon runner
+          - name: macOS-ARM (macos-15)
+            os: macos-15
             triplet: arm64-osx
             run_tests: true
 
