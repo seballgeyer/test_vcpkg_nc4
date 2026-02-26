@@ -74,10 +74,11 @@ jobs:
 
       # -----------------------------------------------------------------------
       # Clone the vcpkg version under test.
-      # Depth-1 clone keeps CI fast; remove --depth 1 if you need full history.
+      # Full clone is required: vcpkg's versioning resolves the baseline through
+      # `git show <commit>:versions/baseline.json`, which fails on shallow clones.
       - name: Clone vcpkg
         run: |
-          git clone --depth 1 --branch "${{ env.VCPKG_GIT_REF }}" \
+          git clone --branch "${{ env.VCPKG_GIT_REF }}" \
             "${{ env.VCPKG_GIT_URL }}" "${{ github.workspace }}/vcpkg"
 
       - name: Bootstrap vcpkg
