@@ -1,0 +1,7 @@
+{
+  "name": "test-netcdf4",
+  "version": "0.1.0",
+  "dependencies": [
+    "netcdf-cxx4"
+  ]
+}

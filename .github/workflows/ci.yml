@@ -1,0 +1,135 @@
+name: CI – netcdf-cxx4 vcpkg test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# ---------------------------------------------------------------------------
+# To test your own vcpkg port fix, change these two variables:
+#   VCPKG_GIT_URL – full git clone URL (GitHub, Codeberg, local mirror, …)
+#   VCPKG_GIT_REF – branch, tag, or SHA to check out
+# ---------------------------------------------------------------------------
+env:
+  VCPKG_GIT_URL: https://github.com/microsoft/vcpkg
+  VCPKG_GIT_REF: master
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ---- native builds ------------------------------------------------
+          - name: macOS-Intel
+            os: macos-13
+            triplet: x64-osx
+            run_tests: true
+
+          - name: macOS-ARM
+            os: macos-14          # Apple Silicon runner
+            triplet: arm64-osx
+            run_tests: true
+
+          - name: Linux-x64
+            os: ubuntu-latest
+            triplet: x64-linux
+            run_tests: true
+
+          # ---- Windows, cross-compiled from Linux (MinGW-w64) ---------------
+          - name: Windows-x64-cross
+            os: ubuntu-latest
+            triplet: x64-mingw-static
+            run_tests: false      # cannot execute win32 binaries on Linux
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # -----------------------------------------------------------------------
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            curl zip unzip tar pkg-config cmake ninja-build \
+            autoconf automake libtool nasm
+
+      - name: Install MinGW-w64 cross toolchain (Windows-cross only)
+        if: matrix.triplet == 'x64-mingw-static'
+        run: |
+          sudo apt-get install -y --no-install-recommends \
+            gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 \
+            binutils-mingw-w64-x86-64
+
+      # -----------------------------------------------------------------------
+      # Clone the vcpkg version under test.
+      # Depth-1 clone keeps CI fast; remove --depth 1 if you need full history.
+      - name: Clone vcpkg
+        run: |
+          git clone --depth 1 --branch "${{ env.VCPKG_GIT_REF }}" \
+            "${{ env.VCPKG_GIT_URL }}" "${{ github.workspace }}/vcpkg"
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      # -----------------------------------------------------------------------
+      # Enable GitHub Actions built-in binary cache so repeated runs are fast.
+      - name: Export vcpkg binary-cache variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL',     process.env.ACTIONS_CACHE_URL     ?? '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN ?? '');
+
+      # -----------------------------------------------------------------------
+      - name: CMake configure – native
+        if: matrix.triplet != 'x64-mingw-static'
+        env:
+          VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+        run: |
+          cmake -B "${{ github.workspace }}/build" \
+            -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: CMake configure – Windows cross (MinGW)
+        if: matrix.triplet == 'x64-mingw-static'
+        env:
+          VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+        run: |
+          cmake -B "${{ github.workspace }}/build" \
+            -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="${{ github.workspace }}/cmake/toolchains/mingw-w64-x86_64.cmake" \
+            -DCMAKE_BUILD_TYPE=Release
+
+      # -----------------------------------------------------------------------
+      - name: Build
+        run: cmake --build "${{ github.workspace }}/build" --config Release
+
+      # -----------------------------------------------------------------------
+      - name: Run tests
+        if: matrix.run_tests
+        run: |
+          ctest --test-dir "${{ github.workspace }}/build" \
+                -C Release --output-on-failure --no-compress-output
+
+      # -----------------------------------------------------------------------
+      - name: Upload build artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcpkg-logs-${{ matrix.name }}
+          path: |
+            ${{ github.workspace }}/vcpkg/buildtrees/**/*.log
+            ${{ github.workspace }}/build/CMakeFiles/CMakeError.log
+            ${{ github.workspace }}/build/CMakeFiles/CMakeOutput.log
+          retention-days: 7
