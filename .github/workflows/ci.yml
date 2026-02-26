@@ -32,8 +32,8 @@ jobs:
             triplet: x64-osx
             run_tests: true
 
-          - name: macOS-ARM (macos-15)
-            os: macos-15
+          - name: macOS-ARM (macos-14)
+            os: macos-14
             triplet: arm64-osx
             run_tests: true
 
